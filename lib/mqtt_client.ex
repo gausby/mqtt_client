@@ -38,14 +38,10 @@ defmodule MqttClient do
   end
 
 
-  def subscribe(client_id, topic, qos \\ 0) do
-    IO.inspect self()
-    Transmitter.cast(client_id,
-      %Package.Subscribe{
-        identifier: Package.generate_random_identifier(),
-        topics: [{topic, qos}]
-      })
-  end
+  # def subscribe(client_id, topic, opts \\ [qos: 0]) do
+  #   subscriber_pid = self()
+  #   MqttClient.Subscription.add(client_id, subscriber_pid, topic, opts)
+  # end
 
   def unsubscribe(client_id, topic) do
     Transmitter.cast(client_id,
