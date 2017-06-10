@@ -30,6 +30,16 @@ defmodule MqttClient.Subscription do
       })
   end
 
+  def unsubscribe(client_id, subscriber_pid, topic_filters) do
+    true = Topic.all_valid_topic_filters?(topic_filters)
+    # should remove subscriber_pid from subscribed topic filters on client_id
+    Transmitter.cast(client_id,
+      %Package.Unsubscribe{
+        identifier: Package.generate_random_identifier(),
+        topics: topic_filters
+      })
+  end
+
   def broadcast(%Package.Publish{topic: topic, payload: payload}) do
     topic_list = String.split(topic, "/")
     for pid <- MqttClient.Subscription.List.lookup(topic) do

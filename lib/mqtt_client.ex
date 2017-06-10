@@ -48,12 +48,8 @@ defmodule MqttClient do
     MqttClient.Subscription.subscribe(client_id, self(), topic_filters, opts)
   end
 
-  def unsubscribe(client_id, topic) do
-    Transmitter.cast(client_id,
-      %Package.Unsubscribe{
-        identifier: Package.generate_random_identifier(),
-        topics: [topic]
-      })
+  def unsubscribe(client_id, topic_filters) do
+    MqttClient.Subscription.unsubscribe(client_id, self(), topic_filters)
   end
 
   def ping(client_id) do
