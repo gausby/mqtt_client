@@ -9,9 +9,9 @@ defmodule MqttClient.Connection do
   end
 
   # Public API
-  def connect(opts) do
+  def connect({_protocol, _host, _port} = server, opts \\ []) do
     opts = Keyword.put_new_lazy(opts, :client_id, &generate_client_id/0)
-    case Supervisor.start_child(@connection_name, [opts]) do
+    case Supervisor.start_child(@connection_name, [server, opts]) do
       {:ok, _pid} ->
         {:ok, Keyword.fetch!(opts, :client_id)}
 

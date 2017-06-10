@@ -22,7 +22,7 @@ defmodule MqttClient do
     Supervisor.start_link(children, strategy: :one_for_one)
   end
 
-  defdelegate connect(opts), to: MqttClient.Connection
+  defdelegate connect(server, opts \\ []), to: MqttClient.Connection
 
   def publish(client_id, opts \\ []) when is_list(opts) do
     {topic_payload, opts} = Keyword.split(opts, [:topic, :payload])

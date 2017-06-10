@@ -11,7 +11,7 @@ defmodule MqttClient.Connection.Receiver do
              socket: nil,
              buffer: <<>>]
 
-  def start_link(opts) do
+  def start_link({protocol, host, port} = server, opts) do
     client_id = Keyword.fetch!(opts, :client_id)
     data =
       %__MODULE__{
@@ -23,8 +23,8 @@ defmodule MqttClient.Connection.Receiver do
           client_id: client_id,
           will: Keyword.get(opts, :will, %Package.Publish{})
         },
-        host: Keyword.get(opts, :host, 'localhost'),
-        port: Keyword.get(opts, :port, 1883)
+        host: host,
+        port: port
       }
 
     GenStateMachine.start_link(__MODULE__, data, name: via_name(client_id))

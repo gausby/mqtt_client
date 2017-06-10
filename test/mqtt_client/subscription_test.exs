@@ -28,10 +28,10 @@ defmodule MqttClient.SubscriptionTest do
   end
 
   test "add a subscription to a process" do
-    {:ok, client_id} = MqttClient.connect([])
+    {:ok, client_id} = MqttClient.connect({:tcp, 'localhost', 1883})
     parent = self()
     :timer.sleep 20
-    {:ok, task_pid} = Task.start(
+    {:ok, _task_pid} = Task.start(
       fn() ->
         :ok = MqttClient.subscribe(client_id, [{"a/b", 2}], [])
         receive do
