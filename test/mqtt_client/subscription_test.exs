@@ -33,7 +33,7 @@ defmodule MqttClient.SubscriptionTest do
     :timer.sleep 20
     {:ok, task_pid} = Task.start(
       fn() ->
-        :ok = Subscription.subscribe(client_id, self(), [{"a/b", 2}], [])
+        :ok = MqttClient.subscribe(client_id, [{"a/b", 2}], [])
         receive do
           message ->
             IO.inspect {self(), message}
@@ -41,7 +41,7 @@ defmodule MqttClient.SubscriptionTest do
         end
       end)
     :timer.sleep(20)
-    MqttClient.publish(client_id, [topic: "a/b", payload: "hi people on the sweet side qos1", qos: 2])
+    MqttClient.publish(client_id, [topic: "a/b", payload: "hi peeps !", qos: 2])
     assert_receive :received
     :timer.sleep 200
   end

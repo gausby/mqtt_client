@@ -44,11 +44,9 @@ defmodule MqttClient do
       })
   end
 
-
-  # def subscribe(client_id, topic, opts \\ [qos: 0]) do
-  #   subscriber_pid = self()
-  #   MqttClient.Subscription.add(client_id, subscriber_pid, topic, opts)
-  # end
+  def subscribe(client_id, topic_filters, opts \\ []) do
+    MqttClient.Subscription.subscribe(client_id, self(), topic_filters, opts)
+  end
 
   def unsubscribe(client_id, topic) do
     Transmitter.cast(client_id,
