@@ -22,6 +22,7 @@ defmodule MqttClient do
     Supervisor.start_link(children, strategy: :one_for_one)
   end
 
+  defdelegate connect(opts), to: MqttClient.Connection
 
   def publish(client_id, opts \\ []) when is_list(opts) do
     {topic_payload, opts} = Keyword.split(opts, [:topic, :payload])
@@ -29,10 +30,16 @@ defmodule MqttClient do
   end
 
   def publish(client_id, topic, payload, opts \\ []) do
+    qos = Keyword.get(opts, :qos, 0)
+    identifier =
+      if qos > 0 and opts[:identifier] == nil do
+        Package.generate_random_identifier()
+      end
     Transmitter.cast(client_id,
       %Package.Publish{
+        identifier: identifier,
         topic: topic, payload: payload,
-        qos: Keyword.get(opts, :qos, 0),
+        qos: qos,
         retain: Keyword.get(opts, :retain, false)
       })
   end

@@ -26,6 +26,7 @@ defmodule MqttClient.Connection.Receiver do
         host: Keyword.get(opts, :host, 'localhost'),
         port: Keyword.get(opts, :port, 1883)
       }
+
     GenStateMachine.start_link(__MODULE__, data, name: via_name(client_id))
   end
 
@@ -42,8 +43,15 @@ defmodule MqttClient.Connection.Receiver do
   end
 
   # dropped connection, should we try to reconnect ?
-  def handle_event(:info, {:tcp_closed, socket}, _, %{socket: socket} = data) do
-    {:next_state, :disconnected, %{data|socket: nil}}
+  def handle_event(:info, {:tcp_closed, socket}, state, %{socket: socket} = data) do
+    case state do
+      {:connected, :awaiting_connack} ->
+        {:stop, :failed_to_receive_connack}
+
+      otherwise ->
+        IO.inspect "lost connection, reason: #{inspect otherwise}"
+        {:next_state, :disconnected, %{data|socket: nil}}
+    end
   end
 
   # receiving data on the tcp connection
@@ -75,7 +83,8 @@ defmodule MqttClient.Connection.Receiver do
         new_data = %{data|socket: socket}
         {:next_state, {:connected, :awaiting_connack}, new_data}
 
-      # todo, handle gen_tcp errors accordingly
+      {:error, :econnrefused} ->
+        {:stop, :econnrefused}
     end
   end
 

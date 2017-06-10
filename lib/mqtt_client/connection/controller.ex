@@ -13,7 +13,7 @@ defmodule MqttClient.Connection.Controller do
 
   use GenServer
 
-  defstruct [client_id: nil]
+  defstruct [client_id: nil, pubrec: MapSet.new()]
 
   # Client API
   def start_link(opts) do
@@ -44,9 +44,9 @@ defmodule MqttClient.Connection.Controller do
 
   # QoS LEVEL 0 ========================================================
   # incoming messages --------------------------------------------------
-  defp handle_package(%Publish{qos: 0} = publish, state) do
-    # todo: BROADCAST `payload` to everyone subscribing to `topic`
-    IO.inspect {:received, publish}
+  defp handle_package(%Publish{qos: 0, dup: false} = publish, state) do
+    # BROADCAST `payload` to everyone subscribing to `topic`
+    MqttClient.Subscription.broadcast(publish)
     {:noreply, state}
   end
 
@@ -54,22 +54,17 @@ defmodule MqttClient.Connection.Controller do
   # QoS LEVEL 1 ========================================================
   # incoming messages --------------------------------------------------
   defp handle_package(%Publish{qos: 1} = publish, state) do
-    # todo: BROADCAST `payload` to everyone subscribing to `topic`
+    # send publish acknowledgement to sender
     puback = %Puback{identifier: publish.identifier}
     :ok = Transmitter.cast(state.client_id, puback)
+    # BROADCAST `payload` to everyone subscribing to `topic`
+    MqttClient.Subscription.broadcast(publish)
     {:noreply, state}
   end
   # outgoing messages --------------------------------------------------
-  #
-  # During publish of QoS1 messages we should spin up a supervised
-  # process storing the publish message; this process will handle the
-  # publish, and republish it (with dup set to true) if it falls for a
-  # timeout--it should stop republishing when we receive the *puback*
-  # message for the identifier.
-  #
   defp handle_package(%Puback{identifier: identifier}, state) do
     # todo: shut down the process tracking publish:identifier
-    IO.inspect "acknowledge #{identifier}"
+    IO.inspect "acknowledge message #{identifier}"
     {:noreply, state}
   end
 
@@ -77,27 +72,30 @@ defmodule MqttClient.Connection.Controller do
   # QoS LEVEL 2 ========================================================
   # incoming messages --------------------------------------------------
   defp handle_package(%Publish{qos: 2} = publish, state) do
-    # todo: BROADCAST `payload` to everyone subscribing to `topic`
-    pubrec = %Pubrec{identifier: publish.identifier}
-    :ok = Transmitter.cast(state.client_id, pubrec)
-    # todo: store release identifier
-    {:noreply, state}
+    unless MapSet.member?(state.pubrec, publish.identifier) do
+      pubrec = %Pubrec{identifier: publish.identifier}
+      :ok = Transmitter.cast(state.client_id, pubrec)
+      # BROADCAST `payload` to everyone subscribing to `topic`
+      MqttClient.Subscription.broadcast(publish)
+      new_state =
+        %{state|pubrec: MapSet.put(state.pubrec, publish.identifier)}
+      {:noreply, new_state}
+    else
+      {:noreply, state}
+    end
   end
   defp handle_package(%Pubrel{identifier: identifier}, state) do
-    pubcomp = %Pubcomp{identifier: identifier}
-    :ok = Transmitter.cast(state.client_id, pubcomp)
-    # todo: discard release identifier
-    {:noreply, state}
+    if MapSet.member?(state.pubrec, identifier) do
+      pubcomp = %Pubcomp{identifier: identifier}
+      :ok = Transmitter.cast(state.client_id, pubcomp)
+      new_state =
+        %{state|pubrec: MapSet.delete(state.pubrec, identifier)}
+      {:noreply, new_state}
+    else
+      {:noreply, state}
+    end
   end
   # outgoing messages --------------------------------------------------
-  #
-  # During publish of QoS2 messages we should spin up a supervised
-  # process storing the publish message; this process will handle the
-  # publish, and republish it (with dup set to true) if it falls for a
-  # timeout--it should stop republishing when we receive the *pubrel*
-  # message for the identifier, and finally it should shut down the
-  # process when we receive the pubcomp message.
-  #
   defp handle_package(%Pubrec{identifier: identifier}, state) do
     # todo: tell message process to stop reposting (state=acknowledged)
     pubrel = %Pubrel{identifier: identifier}

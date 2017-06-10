@@ -5,7 +5,7 @@ defmodule MqttClient.SubscriptionTest do
   alias MqttClient.Subscription
 
   setup_all do
-    {:ok, pid} = MqttClient.Subscription.start_link()
+    {:ok, pid} = MqttClient.start(:normal, [])
     context = [subscription_pid: pid]
     {:ok, context}
   end
@@ -21,9 +21,30 @@ defmodule MqttClient.SubscriptionTest do
     # for _ <- 1..500_000 do
     #   Subscription.List.lookup("a/b/hest")
     # end
-    # IO.inspect Subscription.List.lookup("a/c/hest")
-    # IO.inspect Subscription.List.lookup("hest/a")
+    IO.inspect Subscription.List.lookup("a/c/hest")
+    IO.inspect Subscription.List.lookup("hest/a")
 
-    # IO.inspect "done"
+    IO.inspect "done"
   end
+
+  test "add a subscription to a process" do
+    {:ok, client_id} = MqttClient.connect([])
+    parent = self()
+    :timer.sleep 20
+    {:ok, task_pid} = Task.start(
+      fn() ->
+        :ok = Subscription.subscribe(client_id, self(), [{"a/b", 2}], [])
+        receive do
+          message ->
+            IO.inspect {self(), message}
+            send parent, :received
+        end
+      end)
+    :timer.sleep(20)
+    MqttClient.publish(client_id, [topic: "a/b", payload: "hi people on the sweet side qos1", qos: 2])
+    assert_receive :received
+    :timer.sleep 200
+  end
+
+  # should only subscribe once if the manager is already subscribed
 end

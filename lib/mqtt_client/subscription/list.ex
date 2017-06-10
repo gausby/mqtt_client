@@ -9,10 +9,12 @@ defmodule MqttClient.Subscription.List do
     GenServer.start_link(__MODULE__, :na)
   end
 
-  # Server callbacks
-  def init(:na) do
-    :ets.new(__MODULE__, [:named_table, :public])
-    {:ok, :na}
+  def lookup(topics) do
+    {:ok, query} = Topic.valid?(topics)
+    query
+    |> Enum.with_index(1)
+    |> collect(:root)
+    |> Enum.into(MapSet.new(get_root()))
   end
 
   def insert(pid, topic_filter) do
@@ -27,6 +29,12 @@ defmodule MqttClient.Subscription.List do
         insert_edges(topic_list)
         subscribe(pid, get_key(topic_list))
     end
+  end
+
+  # Server callbacks
+  def init(:na) do
+    :ets.new(__MODULE__, [:named_table, :public])
+    {:ok, :na}
   end
 
   defp catch_all(pid, {{topic, level}, parent} = key) do
@@ -64,21 +72,14 @@ defmodule MqttClient.Subscription.List do
   end
 
 
-  def lookup(topics) do
-    {:ok, query} = Topic.valid?(topics)
-    query
-    |> Enum.with_index(1)
-    |> collect(:root)
-    |> Enum.into(MapSet.new(get_root()))
-  end
-
-  def get_node(topic, level, parent) do
+  defp get_node(topic, level, parent) do
     :ets.lookup(__MODULE__, {{topic, level}, parent})
   end
 
   defp get_root() do
     case get_node(:root, 0, nil) do
       [{{{:root, 0}, nil}, _, catch_alls}] -> catch_alls
+      [] -> []
     end
   end
 

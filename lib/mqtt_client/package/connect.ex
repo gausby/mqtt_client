@@ -17,13 +17,13 @@ defmodule MqttClient.Package.Connect do
   defstruct [
     __META__: %Package.Meta{opcode: @opcode},
     protocol: "MQTT",
-    protocol_version: 4,
+    protocol_version: 0b00000100,
     user_name: nil,
     password: nil,
     clean_session: true,
     keep_alive: 60,
     client_id: nil,
-    will: %Package.Publish{}
+    will: %Package.Publish{payload: nil}
   ]
 
   def decode(<<@opcode::4, 0::4, variable::binary>>) do
@@ -106,7 +106,9 @@ defmodule MqttClient.Package.Connect do
     end
 
     defp payload(f) do
-      [f.client_id, f.will.topic, f.will.payload, f.user_name, f.password]
+      # hack! it should really support a topic with a nil payload
+      payload = if f.will.topic == nil, do: nil, else: f.will.payload
+      [f.client_id, f.will.topic, payload, f.user_name, f.password]
       |> Enum.filter_map(&is_binary/1, &Package.length_encode/1)
     end
 

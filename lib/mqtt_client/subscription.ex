@@ -4,24 +4,37 @@ defmodule MqttClient.Subscription do
   use Supervisor
 
   alias MqttClient.Package
+  alias MqttClient.Subscription
+  alias MqttClient.Topic
   alias MqttClient.Connection.Transmitter
 
-  @name __MODULE__
-
   def start_link() do
-    Supervisor.start_link(__MODULE__, :ok, name: @name)
+    Supervisor.start_link(__MODULE__, :ok, name: via_name())
   end
 
-  def subscribe(client_id, subscriber_pid, topics, opts)
+  defp via_name() do
+    {:via, Registry, {Registry.MqttClient, __MODULE__}}
+  end
+
+  def subscribe(client_id, subscriber_pid, topic_filters, opts)
   when is_pid(subscriber_pid) do
-    # validate topics
+    true = Topic.all_valid_topic_filters?(topic_filters)
     # inform the manager that the pid is subscribing to topic
-    # the manager will monitor the pid
+    Subscription.Manager.add_subscription(client_id, subscriber_pid, topic_filters)
+    # the manager will monitor the pid, should the process crash its pid should
+    # get unsubscribed from the subscription list
     Transmitter.cast(client_id,
       %Package.Subscribe{
         identifier: Package.generate_random_identifier(),
-        topics: topics # [{topic, qos}]
+        topics: topic_filters
       })
+  end
+
+  def broadcast(%Package.Publish{topic: topic, payload: payload}) do
+    topic_list = String.split(topic, "/")
+    for pid <- MqttClient.Subscription.List.lookup(topic) do
+      send pid, {:publish, topic_list, payload}
+    end
   end
 
   # callbacks

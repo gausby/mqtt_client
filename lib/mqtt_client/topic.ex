@@ -77,4 +77,10 @@ defmodule MqttClient.Topic do
   #    separator. In either case it MUST be the last character
   #    specified in the Topic Filter.
 
+  def all_valid_topic_filters?(topic_filters) do
+    topic_filters
+    |> Keyword.keys()
+    |> Enum.map(&MqttClient.Topic.valid_filter?/1)
+    |> Enum.all?(fn {:error, _} -> false; {:ok, _} -> true end)
+  end
 end
