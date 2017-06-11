@@ -10,11 +10,14 @@ defmodule MqttClient.Subscription.List do
   end
 
   def lookup(topics) do
-    {:ok, query} = Topic.valid?(topics)
-    query
-    |> Enum.with_index(1)
-    |> collect(:root)
-    |> Enum.into(MapSet.new(get_root()))
+    with {:ok, query} <- Topic.valid?(topics),
+         query_with_index = Enum.with_index(query, 1),
+         root_set = MapSet.new(get_root()),
+         subscriber_pids = collect(query_with_index, :root) do
+      Enum.into(subscriber_pids, root_set)
+    else
+      reason -> raise "handle this: #{inspect reason}"
+    end
   end
 
   def insert(pid, topic_filter) do
@@ -31,23 +34,26 @@ defmodule MqttClient.Subscription.List do
     end
   end
 
-  # Server callbacks
+
+  #=Server callbacks ===================================================
   def init(:na) do
     :ets.new(__MODULE__, [:named_table, :public])
     {:ok, :na}
   end
 
+
+  #=Helpers ============================================================
   defp catch_all(pid, {{topic, level}, parent} = key) do
     case :ets.lookup(__MODULE__, key) do
-      [{{{^topic, ^level}, ^parent}, _subs, catch_alls}] ->
-        :ets.update_element(__MODULE__, key, {3, [pid | catch_alls]})
+      [{{{^topic, ^level}, ^parent}, _refs, _subs, catch_alls}] ->
+        :ets.update_element(__MODULE__, key, {4, [pid | catch_alls]})
     end
   end
 
   defp subscribe(pid, {{topic, level}, parent} = key) do
     case :ets.lookup(__MODULE__, key) do
-      [{{{^topic, ^level}, ^parent}, subscriptions, _catch_alls}] ->
-        :ets.update_element(__MODULE__, key, {2, [pid | subscriptions]})
+      [{{{^topic, ^level}, ^parent}, _refs, subscriptions, _catch_alls}] ->
+        :ets.update_element(__MODULE__, key, {3, [pid | subscriptions]})
     end
   end
 
@@ -56,68 +62,52 @@ defmodule MqttClient.Subscription.List do
   defp get_key([{topic, level}, {parent, _}|_]),
     do: {{topic, level}, parent}
 
-
-  defp insert_edges([]),
-    do: insert_edge({{:root, 0}, nil})
-  defp insert_edges([{_, 1} = edge]),
-    do: insert_edge({edge, :root})
-  defp insert_edges([edge, from|rest]) do
-    {parent, _} = from
-    insert_edge({edge, parent})
-    insert_edges([from|rest])
+  defp insert_edges([_|rest] = topics) do
+    topics |> get_key() |> insert_edge()
+    insert_edges(rest)
   end
-
-  defp insert_edge({{_topic, _level}, _from} = key) do
-    :ets.insert_new(__MODULE__, {key, [], []})
-  end
-
-
-  defp get_node(topic, level, parent) do
-    :ets.lookup(__MODULE__, {{topic, level}, parent})
+  defp insert_edges(edge) do
+    edge |> get_key() |> insert_edge()
   end
 
   defp get_root() do
-    case get_node(:root, 0, nil) do
-      [{{{:root, 0}, nil}, _, catch_alls}] -> catch_alls
-      [] -> []
+    key = {{:root, 0}, nil}
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, _ref_counter, _subs, catch_alls}] ->
+        catch_alls
+
+      [] ->
+        []
     end
   end
 
   defp collect([], _), do: []
-  defp collect([{topic, level}], parent) do
-    topic_level =
-      case get_node(topic, level, parent) do
-        [{{{^topic, ^level}, ^parent}, subs, catch_alls}] ->
-          subs ++ catch_alls
-
-        [] -> []
-      end
-    wildcard_level =
-      case get_node("+", level, parent) do
-        [{{{"+", ^level}, ^parent}, subs, catch_alls}] ->
-          subs ++ catch_alls
-
-        [] -> []
-      end
-
-    topic_level ++ wildcard_level
-  end
   defp collect([{topic, level}|rest], parent) do
-    topic_level =
-      case get_node(topic, level, parent) do
-        [{{{^topic, ^level}, ^parent}, _, catch_alls}] ->
-          catch_alls ++ collect(rest, topic)
+    collect_node({{topic, level}, parent}, rest)
+    ++ collect_node({{"+", level}, parent}, rest)
+  end
 
-        [] -> []
-      end
-    wildcard_level =
-      case get_node("+", level, parent) do
-        [{{{"+", ^level}, ^parent}, _, catch_alls}] ->
-          catch_alls ++ collect(rest, "+")
+  defp collect_node(key, []) do
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, _ref_counter, subs, catch_alls}] ->
+        catch_alls ++ subs
+      [] ->
+        []
+    end
+  end
+  defp collect_node({{topic, _level}, _parent} = key, rest) do
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, _ref_counter, _subs, catch_alls}] ->
+        catch_alls ++ collect(rest, topic)
+      [] ->
+        []
+    end
+  end
 
-        [] -> []
-      end
-
-    topic_level ++ wildcard_level
+  defp insert_edge({{_topic, _level}, _parent} = key) do
+    unless :ets.insert_new(__MODULE__, {key, 1, [], []}) do
+      # increment reference counter for this route
+      :ets.update_counter(__MODULE__, key, {2, 1})
+    end
   end
 end
